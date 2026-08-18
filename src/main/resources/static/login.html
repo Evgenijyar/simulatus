@@ -1,4 +1,27 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Simulatus — вход</title><link rel="stylesheet" href="/assets/backoffice.css?v=010"></head>
-<body class="login-body"><main class="login-shell"><div class="brand-mark">S</div><div class="eyebrow">BACK OFFICE</div><h1>Simulatus</h1><p>Управление пользователями, тренировочными ролями, Gemini-ключами и результатами.</p><form id="login-form" class="login-form"><div id="login-error" class="form-error hidden"></div><label>Логин<input id="login" autocomplete="username" value="admin" required autofocus></label><label>Пароль<input id="password" type="password" autocomplete="current-password" required></label><button id="login-button" class="btn primary" type="submit">Войти</button></form></main>
-<script>const f=document.getElementById('login-form'),e=document.getElementById('login-error'),b=document.getElementById('login-button');f.addEventListener('submit',async x=>{x.preventDefault();e.classList.add('hidden');b.disabled=true;b.textContent='Входим…';try{const r=await fetch('/api/admin/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login.value.trim(),password:password.value})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.message||'Не удалось войти');location.replace('/backoffice');}catch(err){e.textContent=err.message;e.classList.remove('hidden');b.disabled=false;b.textContent='Войти';}});</script></body></html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Simulatus — вход</title>
+    <link rel="stylesheet" href="/assets/backoffice.css?v=011">
+</head>
+<body class="login-body">
+<main class="login-shell">
+    <img class="login-brand-logo" src="/assets/simulatus-logo.png" alt="Симулятус — ИИ-тренажёр продаж">
+    <div class="eyebrow">BACK OFFICE</div>
+    <h1>Управление Simulatus</h1>
+    <p>Пользователи, тренировочные роли, Gemini-ключи и результаты тренировок — в одном месте.</p>
+    <form id="login-form" class="login-form">
+        <div id="login-error" class="form-error hidden"></div>
+        <label>Логин<input id="login" autocomplete="username" value="admin" required autofocus></label>
+        <label>Пароль<input id="password" type="password" autocomplete="current-password" required></label>
+        <button id="login-button" class="btn primary" type="submit">Войти</button>
+    </form>
+</main>
+<script>
+const f=document.getElementById('login-form'),e=document.getElementById('login-error'),b=document.getElementById('login-button');
+f.addEventListener('submit',async x=>{x.preventDefault();e.classList.add('hidden');b.disabled=true;b.textContent='Входим…';try{const r=await fetch('/api/admin/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:login.value.trim(),password:password.value})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.message||'Не удалось войти');location.replace('/backoffice');}catch(err){e.textContent=err.message;e.classList.remove('hidden');b.disabled=false;b.textContent='Войти';}});
+</script>
+</body>
+</html>
