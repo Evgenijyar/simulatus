@@ -14,7 +14,6 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,9 +55,7 @@ public class GeminiTokenService {
     }
 
     /**
-     * Separately verifies that the API key itself is accepted by the Gemini API.
-     * Token provisioning is checked in the next step, so the back-office can distinguish
-     * an authentication problem from a Live/ephemeral-token configuration problem.
+     * Verifies the long-lived key independently from Live token provisioning.
      */
     public void validateApiKey(String apiKey) {
         try {
@@ -85,36 +82,37 @@ public class GeminiTokenService {
     }
 
     /**
-     * Creates a constrained ephemeral token using the BidiGenerateContentSetup + fieldMask
-     * form documented by the Gemini Live API reference. This is intentionally the same
-     * transport contract as the proven Prodamus backend: only model and systemInstruction
-     * are locked by the server; response modalities, tools and sessionResumption remain
-     * available to the native client in its Live setup message.
+     * Creates a short-lived token for a direct client-to-Gemini Live connection.
+     *
+     * Current Gemini Live ephemeral-token contract uses liveConnectConstraints.
+     * We intentionally constrain only fields that must be stable for the whole
+     * training session: model, AUDIO response modality and session-resumption
+     * capability. The role prompt, transcription settings, context compression
+     * and finish_training tool are supplied by the native client's setup message.
+     *
+     * sessionResumption must be authorized in the token itself; otherwise a
+     * constrained Live session cannot reliably issue/use resumption handles.
      */
     @SuppressWarnings("unchecked")
     public TokenResult createConstrainedToken(String apiKey, String model, String systemInstruction) {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(tokenExpireMinutes, ChronoUnit.MINUTES);
         Instant newSessionExpiresAt = now.plus(newSessionExpireSeconds, ChronoUnit.SECONDS);
+        String normalizedModel = normalizeModel(model);
 
-        Map<String, Object> setup = new LinkedHashMap<>();
-        setup.put("model", modelResourceName(model));
+        Map<String, Object> liveConfig = new LinkedHashMap<>();
+        liveConfig.put("responseModalities", List.of("AUDIO"));
+        liveConfig.put("sessionResumption", Map.of());
 
-        List<String> lockedFields = new ArrayList<>();
-        lockedFields.add("model");
-
-        if (systemInstruction != null && !systemInstruction.isBlank()) {
-            setup.put("systemInstruction", Map.of(
-                    "parts", List.of(Map.of("text", systemInstruction.trim()))));
-            lockedFields.add("systemInstruction");
-        }
+        Map<String, Object> constraints = new LinkedHashMap<>();
+        constraints.put("model", modelResourceName(normalizedModel));
+        constraints.put("config", liveConfig);
 
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("uses", 1);
         request.put("expireTime", expiresAt.truncatedTo(ChronoUnit.SECONDS).toString());
         request.put("newSessionExpireTime", newSessionExpiresAt.truncatedTo(ChronoUnit.SECONDS).toString());
-        request.put("bidiGenerateContentSetup", setup);
-        request.put("fieldMask", String.join(",", lockedFields));
+        request.put("liveConnectConstraints", constraints);
 
         try {
             Map<String, Object> result = restClient.post()
@@ -132,17 +130,20 @@ public class GeminiTokenService {
                         "Gemini не вернул ephemeral token.");
             }
 
+            log.info("Gemini Live ephemeral token issued: model={}, expiresAt={}, newSessionExpiresAt={}, resumptionAllowed=true",
+                    normalizedModel, expiresAt, newSessionExpiresAt);
+
             return new TokenResult(
                     token,
                     expiresAt,
                     newSessionExpiresAt,
                     websocketUrl,
-                    normalizeModel(model));
+                    normalizedModel);
 
         } catch (RestClientResponseException ex) {
             String responseBody = compact(ex.getResponseBodyAsString());
             log.warn("Gemini ephemeral token request failed: status={}, model={}, body={}",
-                    ex.getStatusCode().value(), normalizeModel(model), responseBody);
+                    ex.getStatusCode().value(), normalizedModel, responseBody);
             throw ApiException.unavailable(
                     "GEMINI_TOKEN_ERROR",
                     "Gemini отклонил создание ephemeral token (HTTP "
@@ -152,7 +153,7 @@ public class GeminiTokenService {
             throw ex;
         } catch (RuntimeException ex) {
             log.warn("Gemini ephemeral token request failed before response: model={}, error={}",
-                    normalizeModel(model), ex.toString());
+                    normalizedModel, ex.toString());
             throw ApiException.unavailable(
                     "GEMINI_UNAVAILABLE",
                     "Не удалось связаться с Gemini: " + ex.getMessage());
@@ -160,9 +161,7 @@ public class GeminiTokenService {
     }
 
     private String normalizeModel(String model) {
-        if (model == null) {
-            return "";
-        }
+        if (model == null) return "";
         String value = model.trim();
         return value.startsWith("models/") ? value.substring("models/".length()) : value;
     }
@@ -172,9 +171,7 @@ public class GeminiTokenService {
     }
 
     private String compact(String value) {
-        if (value == null) {
-            return "";
-        }
+        if (value == null) return "";
         String result = value.replaceAll("\\s+", " ").trim();
         return result.length() > 1200 ? result.substring(0, 1200) : result;
     }
