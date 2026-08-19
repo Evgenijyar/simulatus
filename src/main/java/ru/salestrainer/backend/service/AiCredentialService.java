@@ -78,11 +78,16 @@ public class AiCredentialService {
         AiCredential credential = require(id);
         try {
             String model = systemConfig.get().getDefaultModel();
+            String apiKey = crypto.decrypt(credential.getEncryptedApiKey());
+            gemini.validateApiKey(apiKey);
             GeminiTokenService.TokenResult token = gemini.createConstrainedToken(
-                    crypto.decrypt(credential.getEncryptedApiKey()), model,
+                    apiKey, model,
                     "Проверка подключения Simulatus. Не начинай диалог до получения аудиовхода.");
             updateHealth(id, "OK", null);
-            return new TestResult(true, "Ключ принят Gemini. Ephemeral token успешно создан.", token.expiresAt());
+            return new TestResult(
+                    true,
+                    "API key принят Gemini, ephemeral token для Live API успешно создан.",
+                    token.expiresAt());
         } catch (RuntimeException ex) {
             updateHealth(id, "ERROR", ex.getMessage());
             throw ex;
